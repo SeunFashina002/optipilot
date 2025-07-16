@@ -114,7 +114,7 @@ export class HypothesesPrompt extends Prompt {
 
     private async messages(): Promise<ThreadCreateParams.Message[]> {
         const fileIds = await Promise.all(
-            this.screenshots.map(async screenshot => {
+            this.screenshots.map(async (screenshot) => {
                 const file = await dataUrlToFileInstance(screenshot);
                 this.recordProgress();
 
@@ -131,7 +131,7 @@ export class HypothesesPrompt extends Prompt {
         this.recordProgress();
 
         const fileBatches: ImageFileContentBlock[][] = cluster(
-            fileIds.map(id => ({
+            fileIds.map((id) => ({
                 type: "image_file" as const,
                 image_file: {
                     file_id: id,
@@ -154,7 +154,7 @@ export class HypothesesPrompt extends Prompt {
 
         const screenshotMessages = [
             user`Here are screenshots of "the Page" in my product. Please list out all the section headings exactly as you see them, without modifying them. Per section please list all the features you see describe their ${keyPageAspects.join(", ")}. Don't hesitate to express your opinion describing ideas, like the hitherto version of a section sucks:`,
-            ...fileBatches.map(content => ({
+            ...fileBatches.map((content) => ({
                 role: "user" as const,
                 content,
             })),
@@ -165,7 +165,7 @@ export class HypothesesPrompt extends Prompt {
 
     private async dataMessages(): Promise<ThreadCreateParams.Message[]> {
         const fileIds = await Promise.all(
-            this.data.map(async file => {
+            this.data.map(async (file) => {
                 this.recordProgress();
 
                 const response = await this.client.files.create({
@@ -202,10 +202,11 @@ export class HypothesesPrompt extends Prompt {
         return [
             {
                 role: "user" as const,
-                content: "Determine what kind of content is presented in each of these materials, and what key insights about user behaviour can be derived from them.",
+                content:
+                    "Determine what kind of content is presented in each of these materials, and what key insights about user behaviour can be derived from them.",
                 attachments,
             },
-            ...fileBatches.map(content => ({
+            ...fileBatches.map((content) => ({
                 role: "user" as const,
                 content,
             })),
@@ -442,15 +443,15 @@ export const generateHypotheses = api.streamInOut<
     HypothesesResponse
 >(
     { expose: true },
-    async(stream: StreamInOut<HypothesesRequest, HypothesesResponse>) => {
+    async (stream: StreamInOut<HypothesesRequest, HypothesesResponse>) => {
         const prompt = new HypothesesPrompt(
-            message => {
+            (message) => {
                 stream.send({ message: message ?? "" });
             },
-            value => {
+            (value) => {
                 stream.send({ threadId: value });
             },
-            error => {
+            (error) => {
                 stream.send({ error: error ?? "" });
                 stream.close();
             },
@@ -462,10 +463,10 @@ export const generateHypotheses = api.streamInOut<
             const handshake = request as HypothesesRequest;
             const files = handshake.data
                 ? await Promise.all(
-                    handshake.data.map(dataUrl =>
-                        dataUrlToFileInstance(dataUrl),
-                    ),
-                )
+                      handshake.data.map((dataUrl) =>
+                          dataUrlToFileInstance(dataUrl),
+                      ),
+                  )
                 : [];
 
             prompt
@@ -502,13 +503,13 @@ interface HypothesesFeedbackResponse {
 export const sendFeedback = api.streamOut<
     HypothesesFeedbackRequest,
     HypothesesFeedbackResponse
->({ expose: true }, async(parameters: HypothesesFeedbackRequest, stream) => {
+>({ expose: true }, async (parameters: HypothesesFeedbackRequest, stream) => {
     const prompt = new HypothesesPrompt(
-        message => {
+        (message) => {
             stream.send({ message: message ?? "" });
         },
         () => {},
-        error => {
+        (error) => {
             stream.send({ error: error ?? "" });
             stream.close();
         },

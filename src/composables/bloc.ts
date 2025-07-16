@@ -7,6 +7,8 @@ import { Body, Meta, UppyFile } from "@uppy/core";
 import useVuelidate from "@vuelidate/core";
 import { required } from "@vuelidate/validators";
 import { useStorage } from "@vueuse/core";
+import Client from "@/composables/client";
+import { multiPageScan } from "@/composables/multiPageScan";
 
 function fields(tab: MaybeRefOrGetter<chrome.tabs.Tab>) {
     const { domain } = useTab(tab);
@@ -31,7 +33,7 @@ function fields(tab: MaybeRefOrGetter<chrome.tabs.Tab>) {
                         { data: string }[] = JSON.parse(value);
 
                     const files = await Promise.all(
-                        deserialized.map(item =>
+                        deserialized.map((item) =>
                             dataUrlToFileInstance(item.data),
                         ),
                     );
@@ -43,7 +45,7 @@ function fields(tab: MaybeRefOrGetter<chrome.tabs.Tab>) {
                 },
                 async write(data: UppyFile<Meta, Body>[]) {
                     const files = await Promise.all(
-                        data.map(item => fileToDataUrl(item.data as File)),
+                        data.map((item) => fileToDataUrl(item.data as File)),
                     );
 
                     return JSON.stringify(
@@ -56,6 +58,8 @@ function fields(tab: MaybeRefOrGetter<chrome.tabs.Tab>) {
             },
         }),
         deviceType: useStorage<DeviceType>(key`scan.deviceType`, `desktop`),
+        mode: useStorage<"single" | "multi">(key`scan.mode`, `single`),
+        urlList: useStorage(key`scan.urlList`, ``),
     };
 
     const feedback = {
@@ -150,7 +154,7 @@ function fields(tab: MaybeRefOrGetter<chrome.tabs.Tab>) {
                 pageHeight: number;
             };
 
-            return new Promise<void>(resolve => {
+            return new Promise<void>((resolve) => {
                 function takeScreenshot(first = false) {
                     if (first) bloc.screenshots = [];
 
@@ -160,13 +164,13 @@ function fields(tab: MaybeRefOrGetter<chrome.tabs.Tab>) {
                     >(
                         {
                             target: { tabId: currentTab.id! },
-                            func: async first => {
+                            func: async (first) => {
                                 const top = first
                                     ? 0
                                     : window.scrollY + window.innerHeight;
 
                                 window.scrollTo(0, top);
-                                await new Promise(resolve =>
+                                await new Promise((resolve) =>
                                     setTimeout(resolve, 500),
                                 );
 
@@ -178,7 +182,7 @@ function fields(tab: MaybeRefOrGetter<chrome.tabs.Tab>) {
                             },
                             args: [first],
                         },
-                        async injectionResults => {
+                        async (injectionResults) => {
                             const { top, step, pageHeight } =
                                 injectionResults[0].result as State;
 
@@ -245,13 +249,21 @@ function fields(tab: MaybeRefOrGetter<chrome.tabs.Tab>) {
             localStorage,
             {
                 serializer: {
-                    read: v => new Map(JSON.parse(v || `[]`)),
-                    write: v => JSON.stringify([...v.entries()]),
+                    read: (v) => new Map(JSON.parse(v || `[]`)),
+                    write: (v) => JSON.stringify([...v.entries()]),
                 },
             },
         ),
 
         async submit() {
+            if (bloc.scan.mode === "multi") {
+                await bloc.submitMultiPage();
+            } else {
+                await bloc.submitSinglePage();
+            }
+        },
+
+        async submitSinglePage() {
             bloc.pending = true;
             bloc.progress.reset(`Gathering screenshots`);
 
@@ -315,9 +327,152 @@ function fields(tab: MaybeRefOrGetter<chrome.tabs.Tab>) {
                 bloc.pending = false;
             }, 300);
 
-            new ScanTitlePrompt(bloc.threadId).request().then(title => {
+            new ScanTitlePrompt(bloc.threadId).request().then((title) => {
                 scan.value!.title = title;
             });
+        },
+
+        async submitMultiPage() {
+            bloc.pending = true;
+            bloc.progress.reset(`Starting multi-page journey scan`);
+
+            const urls = bloc.scan.urlList
+                .split("\n")
+                .map((url: string) => url.trim())
+                .filter(Boolean);
+
+            if (urls.length === 0) {
+                bloc.onError("No valid URLs provided for multi-page scan");
+                return;
+            }
+
+            bloc.progress.tick(`Preparing to scan ${urls.length} pages`);
+
+            // Use the multi-page scan function
+            try {
+                bloc.progress.tick(
+                    `Navigating to pages and capturing screenshots`,
+                );
+
+                const currentTab = toValue(tab);
+                if (!currentTab.id) {
+                    throw new Error("No active tab found");
+                }
+
+                const scanResults = await multiPageScan(urls, {
+                    tabId: currentTab.id,
+                    onProgress: (info) => {
+                        bloc.progress.tick(
+                            `Scanning page ${info.index}/${info.total}: ${info.url}`,
+                        );
+                    },
+                    delayMs: 1000,
+                });
+
+                // Convert scan results to the format expected by the backend
+                const pages = scanResults.map((result, index) => ({
+                    url: result.url,
+                    title: `Page ${index + 1}`,
+                    screenshots: result.screenshots,
+                    data: [],
+                }));
+
+                console.log("Multi-page scan results:", scanResults);
+                console.log("Pages data being sent to backend:", pages);
+
+                bloc.progress.tick(`Analyzing multi-page journey`);
+
+                // Gather liked hypotheses
+                const likedMap =
+                    bloc.likedHypotheses.value instanceof Map
+                        ? bloc.likedHypotheses.value
+                        : new Map();
+                const likedHypothesesList = (bloc.hypotheses || []).filter(
+                    (h: Hypothesis) => likedMap.get(h.title),
+                );
+
+                bloc.progress.tick(`Analyzing multi-page journey`);
+
+                // Use the new multi-page client
+                const client = new Client(
+                    import.meta.env.VITE_API_SERVER_URL ||
+                        "http://localhost:4000",
+                );
+                const stream =
+                    await client.prompt.generateMultiPageHypotheses();
+
+                const analyzePayload: any = {
+                    goal: bloc.scan.objective || "",
+                    overview: bloc.product.overview || "",
+                    details: bloc.product.details || "",
+                    pages,
+                };
+
+                if (likedHypothesesList.length > 0) {
+                    analyzePayload.likedIdeas = likedHypothesesList;
+                }
+
+                console.log("Analyze payload being sent:", analyzePayload);
+
+                await stream.send(analyzePayload);
+
+                let hypotheses: any[] = [];
+                for await (const response of stream) {
+                    console.log("Received response from backend:", response);
+
+                    if (response.hypotheses) {
+                        hypotheses = response.hypotheses;
+                        console.log("Received hypotheses:", hypotheses);
+                    }
+                    if (response.threadId) {
+                        bloc.threadId = response.threadId;
+                        console.log("Received thread ID:", response.threadId);
+                    }
+                    if (response.error) {
+                        console.error("Backend error:", response.error);
+                        bloc.onError();
+                    }
+                    if (
+                        Object.prototype.hasOwnProperty.call(
+                            response,
+                            "message",
+                        )
+                    ) {
+                        bloc.progress.tick(response.message);
+                    }
+                }
+
+                if (bloc.backendErrorOccured) {
+                    return;
+                }
+
+                bloc.progress.finish();
+
+                const scanId = crypto.randomUUID();
+                bloc.scanIds = [...bloc.scanIds, scanId];
+
+                const scan = useScanById(scanId, {
+                    id: scanId,
+                    threadId: bloc.threadId,
+                    title: `Multi-page Journey`,
+                    date: new Date(),
+                    icon: toValue(tab).favIconUrl,
+                    hypotheses: hypotheses,
+                });
+
+                bloc.scanId = scanId;
+
+                setTimeout(() => {
+                    bloc.hypotheses = hypotheses;
+                    bloc.pending = false;
+                }, 300);
+            } catch (error) {
+                console.error("Multi-page scan error:", error);
+                bloc.onError(
+                    `Failed to scan pages: ${error instanceof Error ? error.message : "Unknown error"}`,
+                );
+                bloc.pending = false;
+            }
         },
 
         async submitFeedback(scanId?: string) {
@@ -384,7 +539,7 @@ function isValidUrl(url?: string): boolean {
 
         const invalidProtocols = [`chrome:`, `about:`, `file:`];
         if (
-            invalidProtocols.some(protocol =>
+            invalidProtocols.some((protocol) =>
                 parsedUrl.protocol.startsWith(protocol),
             )
         ) {
@@ -392,7 +547,7 @@ function isValidUrl(url?: string): boolean {
         }
 
         const invalidHosts = [`newtab`, `settings`, `extensions`];
-        return !invalidHosts.some(host => parsedUrl.hostname.includes(host));
+        return !invalidHosts.some((host) => parsedUrl.hostname.includes(host));
     } catch {
         return false;
     }
@@ -424,8 +579,8 @@ export function useBloc() {
 }
 
 function resizeCurrentTab(width: number, height: number) {
-    return new Promise<void>(resolve => {
-        chrome.windows.getCurrent(async function(window) {
+    return new Promise<void>((resolve) => {
+        chrome.windows.getCurrent(async function (window) {
             const updateInfo: chrome.windows.UpdateInfo = {
                 width,
                 height,

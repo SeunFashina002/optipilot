@@ -1,14 +1,25 @@
 <script lang="ts" setup>
 // @ts-ignore
 const emit = defineEmits<{
-    (event: `back`): void
-    (event: `proceed`): void
+    (event: `back`): void;
+    (event: `proceed`): void;
 }>();
 
-const { progress } = useBloc();
+const { progress, scan } = useBloc();
 
 const tab = useTab();
 
+const isMultiPageScan = computed(() => scan.mode === "multi");
+const currentPageInfo = computed(() => {
+    if (!isMultiPageScan.value) return "";
+
+    const urls = scan.urlList
+        .split("\n")
+        .map((url) => url.trim())
+        .filter(Boolean);
+    const currentPage = Math.floor(progress.numerator / 75); // Assuming 75 steps per page
+    return currentPage < urls.length ? urls[currentPage] : "";
+});
 </script>
 
 <template>
@@ -17,21 +28,19 @@ const tab = useTab();
             <app-copy
                 type="Title/h1"
                 color="f6"
-                v-text="`Scanning page...`"
+                v-text="
+                    isMultiPageScan ? `Scanning pages...` : `Scanning page...`
+                "
             />
 
             <app-copy
                 type="Title/h3"
                 color="cd"
                 class="view__subheader"
-                v-text="tab.url"
+                v-text="isMultiPageScan ? currentPageInfo : tab.url"
             />
 
-            <app-copy
-                type="Title/h3"
-                color="cd"
-                v-text="progress.message"
-            />
+            <app-copy type="Title/h3" color="cd" v-text="progress.message" />
 
             <app-progress-bar
                 class="view__progress"
@@ -43,7 +52,9 @@ const tab = useTab();
                 type="Title/h4"
                 color="cd"
                 class="view__reminder"
-                v-text="`This will take a few minutes, please keep the extension pop-up open`"
+                v-text="
+                    `This will take a few minutes, please keep the extension pop-up open`
+                "
             />
         </div>
     </div>

@@ -1,23 +1,41 @@
 <script lang="ts" setup>
-import { DEVICE_TYPE_OPTIONS } from '@/constants';
-import backwards from '@/icons/backwards.svg';
-import forward from '@/icons/forward.svg';
+import { DEVICE_TYPE_OPTIONS } from "@/constants";
+import backwards from "@/icons/backwards.svg";
+import forward from "@/icons/forward.svg";
 
 const emit = defineEmits<{
-    (event: `back`): void
-    (event: `proceed`): void
+    (event: `back`): void;
+    (event: `proceed`): void;
 }>();
 
 const { scan } = useBloc();
 
+const isValidUrlList = computed(() => {
+    if (scan.mode === "single") return true;
+    if (!scan.urlList.trim()) return false;
+
+    const urls = scan.urlList
+        .split("\n")
+        .map((url) => url.trim())
+        .filter(Boolean);
+    return (
+        urls.length > 0 &&
+        urls.every((url) => {
+            try {
+                new URL(url);
+                return true;
+            } catch {
+                return false;
+            }
+        })
+    );
+});
 </script>
 
 <template>
     <div class="view">
         <div class="view__content">
-            <app-scroll-view
-                overrun="0.5rem"
-            >
+            <app-scroll-view overrun="0.5rem">
                 <app-view-header
                     class="view__header"
                     headline="About the web page"
@@ -25,6 +43,30 @@ const { scan } = useBloc();
                 />
 
                 <div class="view__form">
+                    <app-choice
+                        v-model="scan.mode"
+                        label="Scan mode"
+                        hint="Choose whether to scan a single page or multiple pages for a journey audit."
+                        required
+                        :items="[
+                            { slug: 'single', label: 'Single page scan' },
+                            {
+                                slug: 'multi',
+                                label: 'Multi-page journey audit',
+                            },
+                        ]"
+                    />
+
+                    <app-input
+                        v-if="scan.mode === 'multi'"
+                        v-model="scan.urlList"
+                        label="Page URLs"
+                        hint="Enter one URL per line for the pages you want to scan in sequence."
+                        type="textarea"
+                        placeholder="https://example.com/page1&#10;https://example.com/page2&#10;https://example.com/page3"
+                        :required="!isValidUrlList"
+                    />
+
                     <app-input
                         v-model="scan.objective"
                         label="Objective"
@@ -32,7 +74,6 @@ const { scan } = useBloc();
                         type="text"
                         :required="scan.$validation.objective.required"
                     />
-
 
                     <!--                    <app-input -->
                     <!--                        v-model="scan.data" -->
@@ -55,7 +96,7 @@ const { scan } = useBloc();
                     <div class="view__navigation-buttons">
                         <app-button
                             label="Back"
-                            :icon=backwards
+                            :icon="backwards"
                             variant="secondary"
                             leader="icon"
                             @click="emit(`back`)"
@@ -63,7 +104,7 @@ const { scan } = useBloc();
 
                         <app-button
                             label="Next"
-                            :icon=forward
+                            :icon="forward"
                             variant="primary"
                             wide
                             :disabled="scan.$validation.$invalid"
@@ -71,9 +112,7 @@ const { scan } = useBloc();
                         />
                     </div>
 
-                    <div
-                        class="view__navigation-copy"
-                    >
+                    <div class="view__navigation-copy">
                         <app-copy
                             type="Label 2"
                             color="cd"
@@ -108,7 +147,7 @@ const { scan } = useBloc();
         padding-top: 1.5rem;
         display: flex;
         flex-direction: column;
-        gap: .75rem;
+        gap: 0.75rem;
         align-items: center;
 
         &-buttons {
@@ -120,4 +159,3 @@ const { scan } = useBloc();
     }
 }
 </style>
-

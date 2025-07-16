@@ -8,31 +8,30 @@
 /**
  * BaseURL is the base URL for calling the Encore application's API.
  */
-export type BaseURL = string
+export type BaseURL = string;
 
-export const Local: BaseURL = "http://localhost:4000"
+export const Local: BaseURL = "http://localhost:4000";
 
 /**
  * Environment returns a BaseURL for calling the cloud environment with the given name.
  */
 export function Environment(name: string): BaseURL {
-    return `https://${name}-9rnxe.encr.app`
+    return `https://${name}-9rnxe.encr.app`;
 }
 
 /**
  * PreviewEnv returns a BaseURL for calling the preview environment with the given PR number.
  */
 export function PreviewEnv(pr: number | string): BaseURL {
-    return Environment(`pr${pr}`)
+    return Environment(`pr${pr}`);
 }
 
 /**
  * Client is an API client for the OptiPilot Encore application.
  */
 export default class Client {
-    public readonly prompt: prompt.ServiceClient
-    public readonly proposal: proposal.ServiceClient
-
+    public readonly prompt: prompt.ServiceClient;
+    public readonly proposal: proposal.ServiceClient;
 
     /**
      * Creates a Client for calling the public and authenticated APIs of your Encore application.
@@ -41,9 +40,9 @@ export default class Client {
      * @param options Options for the client
      */
     constructor(target: BaseURL, options?: ClientOptions) {
-        const base = new BaseClient(target, options ?? {})
-        this.prompt = new prompt.ServiceClient(base)
-        this.proposal = new proposal.ServiceClient(base)
+        const base = new BaseClient(target, options ?? {});
+        this.prompt = new prompt.ServiceClient(base);
+        this.proposal = new proposal.ServiceClient(base);
     }
 }
 
@@ -56,166 +55,237 @@ export interface ClientOptions {
      * however you can override it with your own implementation here if you want to run custom
      * code on each API request made or response received.
      */
-    fetcher?: Fetcher
+    fetcher?: Fetcher;
 
     /** Default RequestInit to be used for the client */
-    requestInit?: Omit<RequestInit, "headers"> & { headers?: Record<string, string> }
+    requestInit?: Omit<RequestInit, "headers"> & {
+        headers?: Record<string, string>;
+    };
 }
 
 export namespace prompt {
     export interface BusinessInfoRequest {
-        tabTitle: string
+        tabTitle: string;
     }
 
     export interface BusinessInfoResponse {
-        message?: string
+        message?: string;
     }
 
     export interface HypothesesFeedbackRequest {
-        threadId: string
-        message: string
+        threadId: string;
+        message: string;
     }
 
     export interface HypothesesFeedbackResponse {
-        hypotheses?: Hypothesis[]
-        message?: string
-        error?: string
+        hypotheses?: Hypothesis[];
+        message?: string;
+        error?: string;
     }
 
     export interface HypothesesRequest {
-        goal: string
-        overview: string
-        details: string
-        screenshots?: string[]
-        data?: string[]
+        goal: string;
+        overview: string;
+        details: string;
+        screenshots?: string[];
+        data?: string[];
     }
 
     export interface HypothesesResponse {
-        hypotheses?: Hypothesis[]
-        message?: string
-        threadId?: string
-        error?: string
+        hypotheses?: Hypothesis[];
+        message?: string;
+        threadId?: string;
+        error?: string;
     }
 
     export interface Hypothesis {
-        title: string
-        description: string
+        title: string;
+        description: string;
+    }
+
+    export interface MultiPageHypothesis {
+        title: string;
+        description: string;
+        pageContext?: string;
+        journeyLevel?: boolean;
+    }
+
+    export interface PageScanData {
+        url: string;
+        title: string;
+        screenshots: string[];
+        data?: string[];
+    }
+
+    export interface MultiPageHypothesesRequest {
+        goal: string;
+        overview: string;
+        details: string;
+        pages: PageScanData[];
+        likedIdeas?: MultiPageHypothesis[];
+    }
+
+    export interface MultiPageHypothesesResponse {
+        hypotheses?: MultiPageHypothesis[];
+        message?: string;
+        threadId?: string;
+        error?: string;
     }
 
     export interface ScanTitleRequest {
-        threadId: string
+        threadId: string;
     }
 
     export interface ScanTitleResponse {
-        title: string
+        title: string;
     }
 
     export class ServiceClient {
-        private baseClient: BaseClient
+        private baseClient: BaseClient;
 
         constructor(baseClient: BaseClient) {
-            this.baseClient = baseClient
+            this.baseClient = baseClient;
         }
 
-        public async analyze(params: BusinessInfoRequest): Promise<BusinessInfoResponse> {
+        public async analyze(
+            params: BusinessInfoRequest,
+        ): Promise<BusinessInfoResponse> {
             // Now make the actual call to the API
-            const resp = await this.baseClient.callAPI("POST", `/business-info`, JSON.stringify(params))
-            return await resp.json() as BusinessInfoResponse
+            const resp = await this.baseClient.callAPI(
+                "POST",
+                `/business-info`,
+                JSON.stringify(params),
+            );
+            return (await resp.json()) as BusinessInfoResponse;
         }
 
-        public async generateHypotheses(): Promise<StreamInOut<HypothesesRequest, HypothesesResponse>> {
-            return await this.baseClient.createStreamInOut(`/prompt.generateHypotheses`)
+        public async generateHypotheses(): Promise<
+            StreamInOut<HypothesesRequest, HypothesesResponse>
+        > {
+            return await this.baseClient.createStreamInOut(
+                `/prompt.generateHypotheses`,
+            );
         }
 
-        public async generateTitle(params: ScanTitleRequest): Promise<ScanTitleResponse> {
+        public async generateTitle(
+            params: ScanTitleRequest,
+        ): Promise<ScanTitleResponse> {
             // Now make the actual call to the API
-            const resp = await this.baseClient.callAPI("POST", `/prompt.generateTitle`, JSON.stringify(params))
-            return await resp.json() as ScanTitleResponse
+            const resp = await this.baseClient.callAPI(
+                "POST",
+                `/prompt.generateTitle`,
+                JSON.stringify(params),
+            );
+            return (await resp.json()) as ScanTitleResponse;
         }
 
-        public async sendFeedback(params: HypothesesFeedbackRequest): Promise<StreamIn<HypothesesFeedbackResponse>> {
+        public async sendFeedback(
+            params: HypothesesFeedbackRequest,
+        ): Promise<StreamIn<HypothesesFeedbackResponse>> {
             // Convert our params into the objects we need for the request
             const query = makeRecord<string, string | string[]>({
-                message:  params.message,
+                message: params.message,
                 threadId: params.threadId,
-            })
+            });
+            return await this.baseClient.createStreamIn(
+                `/prompt.sendFeedback`,
+                { query },
+            );
+        }
 
-            return await this.baseClient.createStreamIn(`/prompt.sendFeedback`, {query})
+        public async generateMultiPageHypotheses(): Promise<
+            StreamInOut<MultiPageHypothesesRequest, MultiPageHypothesesResponse>
+        > {
+            return await this.baseClient.createStreamInOut(
+                `/prompt.generateMultiPageHypotheses`,
+            );
         }
     }
 }
 
 export namespace proposal {
     export interface GenerateRequest {
-        title: string
-        description: string
+        title: string;
+        description: string;
     }
 
     export interface GenerateResponse {
-        id: string
+        id: string;
     }
 
     export interface StatusRequest {
-        id: string
+        id: string;
     }
 
     export interface StatusResponse {
-        status: string
-        url: string | null
+        status: string;
+        url: string | null;
     }
 
     export class ServiceClient {
-        private baseClient: BaseClient
+        private baseClient: BaseClient;
 
         constructor(baseClient: BaseClient) {
-            this.baseClient = baseClient
+            this.baseClient = baseClient;
         }
 
-        public async generate(params: GenerateRequest): Promise<GenerateResponse> {
+        public async generate(
+            params: GenerateRequest,
+        ): Promise<GenerateResponse> {
             // Now make the actual call to the API
-            const resp = await this.baseClient.callAPI("POST", `/proposal.generate`, JSON.stringify(params))
-            return await resp.json() as GenerateResponse
+            const resp = await this.baseClient.callAPI(
+                "POST",
+                `/proposal.generate`,
+                JSON.stringify(params),
+            );
+            return (await resp.json()) as GenerateResponse;
         }
 
         public async status(params: StatusRequest): Promise<StatusResponse> {
             // Now make the actual call to the API
-            const resp = await this.baseClient.callAPI("POST", `/proposal.status`, JSON.stringify(params))
-            return await resp.json() as StatusResponse
+            const resp = await this.baseClient.callAPI(
+                "POST",
+                `/proposal.status`,
+                JSON.stringify(params),
+            );
+            return (await resp.json()) as StatusResponse;
         }
     }
 }
 
-
-
 function encodeQuery(parts: Record<string, string | string[]>): string {
-    const pairs: string[] = []
+    const pairs: string[] = [];
     for (const key in parts) {
-        const val = (Array.isArray(parts[key]) ?  parts[key] : [parts[key]]) as string[]
+        const val = (
+            Array.isArray(parts[key]) ? parts[key] : [parts[key]]
+        ) as string[];
         for (const v of val) {
-            pairs.push(`${key}=${encodeURIComponent(v)}`)
+            pairs.push(`${key}=${encodeURIComponent(v)}`);
         }
     }
-    return pairs.join("&")
+    return pairs.join("&");
 }
 
 // makeRecord takes a record and strips any undefined values from it,
 // and returns the same record with a narrower type.
 // @ts-ignore - TS ignore because makeRecord is not always used
-function makeRecord<K extends string | number | symbol, V>(record: Record<K, V | undefined>): Record<K, V> {
+function makeRecord<K extends string | number | symbol, V>(
+    record: Record<K, V | undefined>,
+): Record<K, V> {
     for (const key in record) {
         if (record[key] === undefined) {
-            delete record[key]
+            delete record[key];
         }
     }
-    return record as Record<K, V>
+    return record as Record<K, V>;
 }
 
 function encodeWebSocketHeaders(headers: Record<string, string>) {
     // url safe, no pad
     const base64encoded = btoa(JSON.stringify(headers))
-      .replaceAll("=", "")
-      .replaceAll("+", "-")
-      .replaceAll("/", "_");
+        .replaceAll("=", "")
+        .replaceAll("+", "-")
+        .replaceAll("/", "_");
     return "encore.dev.headers." + base64encoded;
 }
 
@@ -227,10 +297,10 @@ class WebSocketConnection {
     constructor(url: string, headers?: Record<string, string>) {
         let protocols = ["encore-ws"];
         if (headers) {
-            protocols.push(encodeWebSocketHeaders(headers))
+            protocols.push(encodeWebSocketHeaders(headers));
         }
 
-        this.ws = new WebSocket(url, protocols)
+        this.ws = new WebSocket(url, protocols);
 
         this.on("error", () => {
             this.resolveHasUpdateHandlers();
@@ -246,22 +316,28 @@ class WebSocketConnection {
         this.hasUpdateHandlers = [];
 
         for (const handler of handlers) {
-            handler()
+            handler();
         }
     }
 
     async hasUpdate() {
         // await until a new message have been received, or the socket is closed
         await new Promise((resolve) => {
-            this.hasUpdateHandlers.push(() => resolve(null))
+            this.hasUpdateHandlers.push(() => resolve(null));
         });
     }
 
-    on(type: "error" | "close" | "message" | "open", handler: (event: any) => void) {
+    on(
+        type: "error" | "close" | "message" | "open",
+        handler: (event: any) => void,
+    ) {
         this.ws.addEventListener(type, handler);
     }
 
-    off(type: "error" | "close" | "message" | "open", handler: (event: any) => void) {
+    off(
+        type: "error" | "close" | "message" | "open",
+        handler: (event: any) => void,
+    ) {
         this.ws.removeEventListener(type, handler);
     }
 
@@ -290,7 +366,9 @@ export class StreamInOut<Request, Response> {
         if (this.socket.ws.readyState === WebSocket.CONNECTING) {
             // await that the socket is opened
             await new Promise((resolve) => {
-                this.socket.ws.addEventListener("open", resolve, { once: true });
+                this.socket.ws.addEventListener("open", resolve, {
+                    once: true,
+                });
             });
         }
 
@@ -353,11 +431,13 @@ export class StreamOut<Request, Response> {
 
     constructor(url: string, headers?: Record<string, string>) {
         let responseResolver: (_: any) => void;
-        this.responseValue = new Promise((resolve) => responseResolver = resolve);
+        this.responseValue = new Promise(
+            (resolve) => (responseResolver = resolve),
+        );
 
         this.socket = new WebSocketConnection(url, headers);
         this.socket.on("message", (event: any) => {
-            responseResolver(JSON.parse(event.data))
+            responseResolver(JSON.parse(event.data));
         });
     }
 
@@ -373,7 +453,9 @@ export class StreamOut<Request, Response> {
         if (this.socket.ws.readyState === WebSocket.CONNECTING) {
             // await that the socket is opened
             await new Promise((resolve) => {
-                this.socket.ws.addEventListener("open", resolve, { once: true });
+                this.socket.ws.addEventListener("open", resolve, {
+                    once: true,
+                });
             });
         }
 
@@ -383,12 +465,11 @@ export class StreamOut<Request, Response> {
 // CallParameters is the type of the parameters to a method call, but require headers to be a Record type
 type CallParameters = Omit<RequestInit, "method" | "body" | "headers"> & {
     /** Headers to be sent with the request */
-    headers?: Record<string, string>
+    headers?: Record<string, string>;
 
     /** Query parameters to be sent with the request */
-    query?: Record<string, string | string[]>
-}
-
+    query?: Record<string, string | string[]>;
+};
 
 // A fetcher is the prototype for the inbuilt Fetch function
 export type Fetcher = typeof fetch;
@@ -396,30 +477,33 @@ export type Fetcher = typeof fetch;
 const boundFetch = fetch.bind(this);
 
 class BaseClient {
-    readonly baseURL: string
-    readonly fetcher: Fetcher
-    readonly headers: Record<string, string>
-    readonly requestInit: Omit<RequestInit, "headers"> & { headers?: Record<string, string> }
+    readonly baseURL: string;
+    readonly fetcher: Fetcher;
+    readonly headers: Record<string, string>;
+    readonly requestInit: Omit<RequestInit, "headers"> & {
+        headers?: Record<string, string>;
+    };
 
     constructor(baseURL: string, options: ClientOptions) {
-        this.baseURL = baseURL
+        this.baseURL = baseURL;
         this.headers = {
             "Content-Type": "application/json",
-        }
+        };
 
         // Add User-Agent header if the script is running in the server
         // because browsers do not allow setting User-Agent headers to requests
         if (typeof window === "undefined") {
-            this.headers["User-Agent"] = "9rnxe-Generated-TS-Client (Encore/v1.45.2)";
+            this.headers["User-Agent"] =
+                "9rnxe-Generated-TS-Client (Encore/v1.45.2)";
         }
 
         this.requestInit = options.requestInit ?? {};
 
         // Setup what fetch function we'll be using in the base client
         if (options.fetcher !== undefined) {
-            this.fetcher = options.fetcher
+            this.fetcher = options.fetcher;
         } else {
-            this.fetcher = boundFetch
+            this.fetcher = boundFetch;
         }
     }
 
@@ -428,7 +512,10 @@ class BaseClient {
     }
 
     // createStreamInOut sets up a stream to a streaming API endpoint.
-    async createStreamInOut<Request, Response>(path: string, params?: CallParameters): Promise<StreamInOut<Request, Response>> {
+    async createStreamInOut<Request, Response>(
+        path: string,
+        params?: CallParameters,
+    ): Promise<StreamInOut<Request, Response>> {
         let { query, headers } = params ?? {};
 
         // Fetch auth data if there is any
@@ -437,19 +524,22 @@ class BaseClient {
         // If we now have authentication data, add it to the request
         if (authData) {
             if (authData.query) {
-                query = {...query, ...authData.query};
+                query = { ...query, ...authData.query };
             }
             if (authData.headers) {
-                headers = {...headers, ...authData.headers};
+                headers = { ...headers, ...authData.headers };
             }
         }
 
-        const queryString = query ? '?' + encodeQuery(query) : ''
+        const queryString = query ? "?" + encodeQuery(query) : "";
         return new StreamInOut(this.baseURL + path + queryString, headers);
     }
 
     // createStreamIn sets up a stream to a streaming API endpoint.
-    async createStreamIn<Response>(path: string, params?: CallParameters): Promise<StreamIn<Response>> {
+    async createStreamIn<Response>(
+        path: string,
+        params?: CallParameters,
+    ): Promise<StreamIn<Response>> {
         let { query, headers } = params ?? {};
 
         // Fetch auth data if there is any
@@ -458,19 +548,22 @@ class BaseClient {
         // If we now have authentication data, add it to the request
         if (authData) {
             if (authData.query) {
-                query = {...query, ...authData.query};
+                query = { ...query, ...authData.query };
             }
             if (authData.headers) {
-                headers = {...headers, ...authData.headers};
+                headers = { ...headers, ...authData.headers };
             }
         }
 
-        const queryString = query ? '?' + encodeQuery(query) : ''
+        const queryString = query ? "?" + encodeQuery(query) : "";
         return new StreamIn(this.baseURL + path + queryString, headers);
     }
 
     // createStreamOut sets up a stream to a streaming API endpoint.
-    async createStreamOut<Request, Response>(path: string, params?: CallParameters): Promise<StreamOut<Request, Response>> {
+    async createStreamOut<Request, Response>(
+        path: string,
+        params?: CallParameters,
+    ): Promise<StreamOut<Request, Response>> {
         let { query, headers } = params ?? {};
 
         // Fetch auth data if there is any
@@ -479,30 +572,34 @@ class BaseClient {
         // If we now have authentication data, add it to the request
         if (authData) {
             if (authData.query) {
-                query = {...query, ...authData.query};
+                query = { ...query, ...authData.query };
             }
             if (authData.headers) {
-                headers = {...headers, ...authData.headers};
+                headers = { ...headers, ...authData.headers };
             }
         }
 
-        const queryString = query ? '?' + encodeQuery(query) : ''
+        const queryString = query ? "?" + encodeQuery(query) : "";
         return new StreamOut(this.baseURL + path + queryString, headers);
     }
 
     // callAPI is used by each generated API method to actually make the request
-    public async callAPI(method: string, path: string, body?: BodyInit, params?: CallParameters): Promise<Response> {
-        let { query, headers, ...rest } = params ?? {}
+    public async callAPI(
+        method: string,
+        path: string,
+        body?: BodyInit,
+        params?: CallParameters,
+    ): Promise<Response> {
+        let { query, headers, ...rest } = params ?? {};
         const init = {
             ...this.requestInit,
             ...rest,
             method,
             body: body ?? null,
-        }
+        };
 
         // Merge our headers with any predefined headers
-        init.headers = {...this.headers, ...init.headers, ...headers}
-
+        init.headers = { ...this.headers, ...init.headers, ...headers };
 
         // Fetch auth data if there is any
         const authData = await this.getAuthData();
@@ -510,45 +607,51 @@ class BaseClient {
         // If we now have authentication data, add it to the request
         if (authData) {
             if (authData.query) {
-                query = {...query, ...authData.query};
+                query = { ...query, ...authData.query };
             }
             if (authData.headers) {
-                init.headers = {...init.headers, ...authData.headers};
+                init.headers = { ...init.headers, ...authData.headers };
             }
         }
 
         // Make the actual request
-        const queryString = query ? '?' + encodeQuery(query) : ''
-        const response = await this.fetcher(this.baseURL+path+queryString, init)
+        const queryString = query ? "?" + encodeQuery(query) : "";
+        const response = await this.fetcher(
+            this.baseURL + path + queryString,
+            init,
+        );
 
         // handle any error responses
         if (!response.ok) {
             // try and get the error message from the response body
-            let body: APIErrorResponse = { code: ErrCode.Unknown, message: `request failed: status ${response.status}` }
+            let body: APIErrorResponse = {
+                code: ErrCode.Unknown,
+                message: `request failed: status ${response.status}`,
+            };
 
             // if we can get the structured error we should, otherwise give a best effort
             try {
-                const text = await response.text()
+                const text = await response.text();
 
                 try {
-                    const jsonBody = JSON.parse(text)
+                    const jsonBody = JSON.parse(text);
                     if (isAPIErrorResponse(jsonBody)) {
-                        body = jsonBody
+                        body = jsonBody;
                     } else {
-                        body.message += ": " + JSON.stringify(jsonBody)
+                        body.message += ": " + JSON.stringify(jsonBody);
                     }
                 } catch {
-                    body.message += ": " + text
+                    body.message += ": " + text;
                 }
             } catch (e) {
                 // otherwise we just append the text to the error message
-                body.message += ": " + String(e)
+                body.message += ": " + String(e);
             }
 
-            throw new APIError(response.status, body)
+            throw new APIError(response.status, body);
         }
 
-        return response
+        return response;
     }
 }
 
@@ -556,22 +659,25 @@ class BaseClient {
  * APIErrorDetails represents the response from an Encore API in the case of an error
  */
 interface APIErrorResponse {
-    code: ErrCode
-    message: string
-    details?: any
+    code: ErrCode;
+    message: string;
+    details?: any;
 }
 
 function isAPIErrorResponse(err: any): err is APIErrorResponse {
     return (
-        err !== undefined && err !== null &&
+        err !== undefined &&
+        err !== null &&
         isErrCode(err.code) &&
-        typeof(err.message) === "string" &&
-        (err.details === undefined || err.details === null || typeof(err.details) === "object")
-    )
+        typeof err.message === "string" &&
+        (err.details === undefined ||
+            err.details === null ||
+            typeof err.details === "object")
+    );
 }
 
 function isErrCode(code: any): code is ErrCode {
-    return code !== undefined && Object.values(ErrCode).includes(code)
+    return code !== undefined && Object.values(ErrCode).includes(code);
 }
 
 /**
@@ -581,17 +687,17 @@ export class APIError extends Error {
     /**
      * The HTTP status code associated with the error.
      */
-    public readonly status: number
+    public readonly status: number;
 
     /**
      * The Encore error code
      */
-    public readonly code: ErrCode
+    public readonly code: ErrCode;
 
     /**
      * The error details
      */
-    public readonly details?: any
+    public readonly details?: any;
 
     constructor(status: number, response: APIErrorResponse) {
         // extending errors causes issues after you construct them, unless you apply the following fixes
@@ -599,15 +705,15 @@ export class APIError extends Error {
 
         // set error name as constructor name, make it not enumerable to keep native Error behavior
         // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target#new.target_in_constructors
-        Object.defineProperty(this, 'name', {
-            value:        'APIError',
-            enumerable:   false,
+        Object.defineProperty(this, "name", {
+            value: "APIError",
+            enumerable: false,
             configurable: true,
-        })
+        });
 
         // fix the prototype chain
         if ((Object as any).setPrototypeOf == undefined) {
-            (this as any).__proto__ = APIError.prototype
+            (this as any).__proto__ = APIError.prototype;
         } else {
             Object.setPrototypeOf(this, APIError.prototype);
         }
@@ -617,9 +723,9 @@ export class APIError extends Error {
             (Error as any).captureStackTrace(this, this.constructor);
         }
 
-        this.status = status
-        this.code = response.code
-        this.details = response.details
+        this.status = status;
+        this.code = response.code;
+        this.details = response.details;
     }
 }
 
